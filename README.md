@@ -1,2 +1,8 @@
-# school-homework
-Web app for school homework management
+# School Homework
+
+Веб-приложение для взаимодействия учеников и учителей.
+Учитель загружает домашние задания в разных форматах (PDF, DOCX, PNG, видео).
+
+## Технологии
+- Backend: Go
+- Frontend: (в разработке)
