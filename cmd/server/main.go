@@ -4,10 +4,12 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/K1viyt/school-homework/internal/database"
 	"github.com/K1viyt/school-homework/internal/handlers"
 )
 
 func main() {
+	database.Init()
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Сервер работает!"))
 	})
