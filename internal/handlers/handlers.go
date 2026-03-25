@@ -1,15 +1,27 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/K1viyt/school-homework/internal/database"
 )
+
+type Homework struct {
+	ID          int    `json:"id"`
+	Filename    string `json:"filename"`
+	Filepath    string `json:"filepath"`
+	Subject     string `json:"subject"`
+	Description string `json:"description"`
+	UploadedAt  string `json:"uploaded_at"`
+}
 
 func UploadHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -43,5 +55,71 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Fprintf(w, "файл %s загружен", h.Filename)
+
+}
+
+func ListHomeworksHandler(w http.ResponseWriter, r *http.Request) {
+	// 1. Проверяем что метод GET
+	if r.Method != http.MethodGet {
+		http.Error(w, "Разрешон только GET", http.StatusMethodNotAllowed)
+		return
+	}
+	// 2. Делаем SELECT-запрос к базе данных
+	rows, err := database.DB.Query(`SELECT id,filename,filepath FROM homework`)
+
+	// 3. Проходим по результатам и собираем их в слайс структур
+	var homeworks []Homework
+	if err != nil {
+		http.Error(w, "Ошибка запроса к базе данных", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var hw Homework
+
+		err := rows.Scan(&hw.ID, &hw.Filename, &hw.Filepath)
+		if err != nil {
+			http.Error(w, "Некоректный тип данных", http.StatusBadRequest)
+			return
+		}
+		// 3. Проходим по результатам и собираем их в слайс структур
+		homeworks = append(homeworks, hw)
+	}
+
+	// 4. Превращаем слайс в JSON\
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(homeworks)
+	// 5. Отправляем JSON клиенту
+}
+
+func DeleteHomeworkHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Разрешон только Delete", http.StatusMethodNotAllowed)
+		return
+	}
+	//Получаю ID
+	idStr := strings.TrimPrefix(r.URL.Path, "/homeworks/delete/")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Некорректный id", http.StatusBadRequest)
+		return
+	}
+	//Удаляем по ID,filepath
+	var fpath string
+	err = database.DB.QueryRow(`SELECT filepath FROM homework WHERE id=?`, id).Scan(&fpath)
+	if err != nil {
+		http.Error(w, "Задание не найдено", http.StatusNotFound)
+		return
+	}
+	_, err = database.DB.Exec(`DELETE FROM homework WHERE id=?`, id)
+	if err != nil {
+		http.Error(w, "Ошибка удаления из базы", http.StatusInternalServerError)
+		return
+	}
+	os.Remove(fpath)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Задание удалено",
+	})
 
 }

@@ -14,6 +14,8 @@ func main() {
 		w.Write([]byte("Сервер работает!"))
 	})
 	http.HandleFunc("/upload", handlers.UploadHandler)
+	http.HandleFunc("/homeworks", handlers.ListHomeworksHandler)
+	http.HandleFunc("/homeworks/delete/", handlers.DeleteHomeworkHandler)
 
 	log.Println("Сервер запущен на http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
