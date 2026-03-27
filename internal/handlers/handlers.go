@@ -180,3 +180,69 @@ func UpdateHomeworkHandler(w http.ResponseWriter, r *http.Request) {
 		"message": "Задание обновлено",
 	})
 }
+
+func ReplaceHomeworkHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "Разрешон только PUT", http.StatusMethodNotAllowed)
+		return
+	}
+	idSrs := strings.TrimPrefix(r.URL.Path, "/homeworks/replace/")
+	id, err := strconv.Atoi(idSrs)
+	if err != nil {
+		http.Error(w, "Некоректный тип данных", http.StatusBadRequest)
+		return
+	}
+	var fpath string
+	err = database.DB.QueryRow(`SELECT filepath FROM homework WHERE id=?`, id).Scan(&fpath)
+	if err != nil {
+		http.Error(w, "Такого id нету", http.StatusNotFound)
+		return
+	}
+	os.Remove(fpath)
+
+	file, h, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Ошибка при получении файла", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	f, err := os.Create(filepath.Join("uploads", h.Filename))
+	if err != nil {
+		http.Error(w, "Не удалось сохранить файл", http.StatusInternalServerError)
+		log.Println("Ошибка создания файла:", err)
+		return
+	}
+	defer f.Close()
+
+	_, err = io.Copy(f, file)
+	if err != nil {
+		http.Error(w, "Ошибка копирования в новый файл", http.StatusBadRequest)
+		return
+	}
+	subject := r.FormValue("subject")
+	description := r.FormValue("description")
+	var subjectVal any
+	var descriptionVal any
+
+	if subject != "" {
+		subjectVal = subject
+	} else {
+		subjectVal = nil
+	}
+	if description != "" {
+		descriptionVal = description
+
+	} else {
+		descriptionVal = nil
+	}
+	_, err = database.DB.Exec(`UPDATE homework SET filename=?,filepath=?,subject=?,description=? WHERE id=?`, h.Filename, filepath.Join(h.Filename, "uploads"), subjectVal, descriptionVal, id)
+	if err != nil {
+		http.Error(w, "Ошибка перезаписи файла в базу", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Задание заменено",
+	})
+}
