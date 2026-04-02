@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/K1viyt/school-homework/internal/database"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Homework struct {
@@ -236,7 +238,7 @@ func ReplaceHomeworkHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		descriptionVal = nil
 	}
-	_, err = database.DB.Exec(`UPDATE homework SET filename=?,filepath=?,subject=?,description=? WHERE id=?`, h.Filename, filepath.Join(h.Filename, "uploads"), subjectVal, descriptionVal, id)
+	_, err = database.DB.Exec(`UPDATE homework SET filename=?,filepath=?,subject=?,description=? WHERE id=?`, h.Filename, filepath.Join("uploads", h.Filename), subjectVal, descriptionVal, id)
 	if err != nil {
 		http.Error(w, "Ошибка перезаписи файла в базу", http.StatusInternalServerError)
 		return
@@ -244,5 +246,79 @@ func ReplaceHomeworkHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": "Задание заменено",
+	})
+}
+func genarateUsername(fullName string) string {
+	// берём первое слово из полного имени (имя)
+	parts := strings.Fields(fullName)
+	base := strings.ToLower(parts[0])
+	// добавляем 4 случайных цифры
+	suffix := fmt.Sprintf("%04d", rand.Intn(10000))
+	return base + "_" + suffix
+
+}
+
+func RegistrHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Разрешон только POST", http.StatusMethodNotAllowed)
+		return
+	}
+	var role string
+	//Достаем нужные значения из БД
+	password := r.FormValue("password")
+	fullName := r.FormValue("full_name")
+	login := genarateUsername(fullName)
+	//Защита для роли учителя
+	if r.FormValue("invite_code") == "SECRET123" {
+		role = "teacher"
+	} else {
+		role = "student"
+	}
+	//Пишем пароль в hash
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, "Ошибка записи pasword в hash", http.StatusBadRequest)
+		return
+	}
+	//Записываем данные в БД
+	_, err = database.DB.Exec(`INSERT INTO users(full_name,role,password,username) VALUES(?,?,?,?)`, fullName, role, hash, login)
+	if err != nil {
+		http.Error(w, "Ошибка загрузки данных пользователя в базу", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message":  "Регистрация успешна",
+		"username": login,
+	})
+
+}
+func LoginHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Разрешон только Post", http.StatusMethodNotAllowed)
+		return
+	}
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+
+	var storedHash string
+	var role string
+	err := database.DB.QueryRow(
+		`SELECT password, role FROM users WHERE username=?`, username,
+	).Scan(&storedHash, &role)
+	if err != nil {
+		http.Error(w, "Пользователь не найден", http.StatusNotFound)
+		return
+	}
+	err = bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password))
+	if err != nil {
+		http.Error(w, "Неверный пароль", http.StatusUnauthorized)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message":  "Вы успешно авторизованны",
+		"username": username,
+		"role":     role,
 	})
 }

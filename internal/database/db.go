@@ -31,6 +31,17 @@ func Init() {
 	if err != nil {
 		log.Fatal("Невозможно создать BD: ", err)
 	}
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS users(
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	full_name TEXT NOT NULL,
+	username TEXT NOT NULL UNIQUE,
+	password TEXT NOT NULL,
+	role TEXT NOT NULL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`)
+	if err != nil {
+		log.Fatal("Невозможно созадть BD под users: ", err)
+	}
 	DB = db
 
 }

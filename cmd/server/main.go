@@ -18,6 +18,8 @@ func main() {
 	http.HandleFunc("/homeworks/delete/", handlers.DeleteHomeworkHandler)
 	http.HandleFunc("/homeworks/update/", handlers.UpdateHomeworkHandler)
 	http.HandleFunc("/homeworks/replace/", handlers.ReplaceHomeworkHandler)
+	http.HandleFunc("/registr", handlers.RegistrHandler)
+	http.HandleFunc("/login", handlers.LoginHandler)
 
 	log.Println("Сервер запущен на http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
