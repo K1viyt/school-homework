@@ -42,6 +42,13 @@ func Init() {
 	if err != nil {
 		log.Fatal("Невозможно созадть BD под users: ", err)
 	}
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS sessions(id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`)
+	if err != nil {
+		log.Fatal("Невозможно созадть BD под sessions: ", err)
+	}
 	DB = db
 
 }

@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	crand "crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -258,6 +260,16 @@ func genarateUsername(fullName string) string {
 
 }
 
+// Данный токен выдается user при успешной авторизации
+func genaratToken() (string, error) {
+	bytes := make([]byte, 32)
+	_, err := crand.Read(bytes)
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
 func RegistrHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Разрешон только POST", http.StatusMethodNotAllowed)
@@ -303,9 +315,10 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	var storedHash string
 	var role string
+	var userID int
 	err := database.DB.QueryRow(
-		`SELECT password, role FROM users WHERE username=?`, username,
-	).Scan(&storedHash, &role)
+		`SELECT password, role,id FROM users WHERE username=?`, username,
+	).Scan(&storedHash, &role, &userID)
 	if err != nil {
 		http.Error(w, "Пользователь не найден", http.StatusNotFound)
 		return
@@ -315,10 +328,21 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Неверный пароль", http.StatusUnauthorized)
 		return
 	}
+	token, err := genaratToken()
+	if err != nil {
+		http.Error(w, "Ошибка генерации token", http.StatusInternalServerError)
+		return
+	}
+	_, err = database.DB.Exec(`INSERT INTO sessions(user_id,token),VALUES(?,?)`, userID, token)
+	if err != nil {
+		http.Error(w, "Ошибка передачи данных сессии пользователя", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"message":  "Вы успешно авторизованны",
 		"username": username,
 		"role":     role,
+		"token":    token,
 	})
 }
