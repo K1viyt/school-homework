@@ -27,11 +27,29 @@ type Homework struct {
 	UploadedAt  string  `json:"uploaded_at"`
 }
 
+type User struct {
+	ID       int
+	Username string
+	Role     string
+}
+
 func UploadHandler(w http.ResponseWriter, r *http.Request) {
 	//Проверка на POST
 	if r.Method != http.MethodPost {
 		http.Error(w, "Разрешён только POST", http.StatusMethodNotAllowed)
 		return // ← без этого код ниже выполнится!
+	}
+	// Проверка авторизации
+	user, err := getUserFromToken(r)
+	if err != nil {
+		http.Error(w, "Не авторизован", http.StatusUnauthorized)
+		return
+	}
+
+	// Проверка роли (только для хэндлеров учителя)
+	if user.Role != "teacher" {
+		http.Error(w, "Доступ запрещён", http.StatusForbidden)
+		return
 	}
 	//Получаем мето данные файла и закидывем сам файл в память
 	file, h, err := r.FormFile("file")
@@ -88,6 +106,18 @@ func ListHomeworksHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Разрешон только GET", http.StatusMethodNotAllowed)
 		return
 	}
+	// Проверка авторизации
+	user, err := getUserFromToken(r)
+	if err != nil {
+		http.Error(w, "Не авторизован", http.StatusUnauthorized)
+		return
+	}
+
+	// Проверка роли (только для хэндлеров учителя)
+	if user.Role != "teacher" {
+		http.Error(w, "Доступ запрещён", http.StatusForbidden)
+		return
+	}
 	// 2. Делаем SELECT-запрос к базе данных
 	rows, err := database.DB.Query(`SELECT id,filename,filepath,subject,description FROM homework`)
 
@@ -121,6 +151,18 @@ func DeleteHomeworkHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Разрешон только Delete", http.StatusMethodNotAllowed)
 		return
 	}
+	// Проверка авторизации
+	user, err := getUserFromToken(r)
+	if err != nil {
+		http.Error(w, "Не авторизован", http.StatusUnauthorized)
+		return
+	}
+
+	// Проверка роли (только для хэндлеров учителя)
+	if user.Role != "teacher" {
+		http.Error(w, "Доступ запрещён", http.StatusForbidden)
+		return
+	}
 	//Получаю ID
 	idStr := strings.TrimPrefix(r.URL.Path, "/homeworks/delete/")
 	id, err := strconv.Atoi(idStr)
@@ -150,6 +192,18 @@ func DeleteHomeworkHandler(w http.ResponseWriter, r *http.Request) {
 func UpdateHomeworkHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPatch {
 		http.Error(w, "Разрешон только Patch", http.StatusMethodNotAllowed)
+		return
+	}
+	// Проверка авторизации
+	user, err := getUserFromToken(r)
+	if err != nil {
+		http.Error(w, "Не авторизован", http.StatusUnauthorized)
+		return
+	}
+
+	// Проверка роли (только для хэндлеров учителя)
+	if user.Role != "teacher" {
+		http.Error(w, "Доступ запрещён", http.StatusForbidden)
 		return
 	}
 	var input struct {
@@ -190,6 +244,19 @@ func ReplaceHomeworkHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Разрешон только PUT", http.StatusMethodNotAllowed)
 		return
 	}
+	// Проверка авторизации
+	user, err := getUserFromToken(r)
+	if err != nil {
+		http.Error(w, "Не авторизован", http.StatusUnauthorized)
+		return
+	}
+
+	// Проверка роли (только для хэндлеров учителя)
+	if user.Role != "teacher" {
+		http.Error(w, "Доступ запрещён", http.StatusForbidden)
+		return
+	}
+
 	idSrs := strings.TrimPrefix(r.URL.Path, "/homeworks/replace/")
 	id, err := strconv.Atoi(idSrs)
 	if err != nil {
@@ -310,6 +377,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Разрешон только Post", http.StatusMethodNotAllowed)
 		return
 	}
+
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
@@ -345,4 +413,23 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		"role":     role,
 		"token":    token,
 	})
+}
+func getUserFromToken(r *http.Request) (*User, error) {
+	var user User
+	// 1. Достать заголовок Authorization
+	authHeader := r.Header.Get("Authorization")
+
+	// 2. Убрать префикс "Bearer "
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	if token == "" {
+		return nil, fmt.Errorf("токен отсутствует")
+	}
+
+	err := database.DB.QueryRow(`SELECT users.id,users.username,users.role FROM sessions JOIN users ON sessions.user_id = users.id WHERE sessions.token = ? AND sessions.created_at>datetime('now','-24 hours')`, token).Scan(&user.ID, &user.Username, &user.Role)
+	if err != nil {
+
+		return &user, fmt.Errorf("сессия не найдена или истекла")
+	}
+	return &user, nil
+
 }
