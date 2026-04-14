@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>School Homework</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>School Homework</h1>
+    <div id="user-info" class="user-info" hidden>
+      <span id="user-name"></span>
+      <span class="badge" id="user-role"></span>
+      <button id="logout-btn" class="btn-ghost">Выйти</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- =========== AUTH =========== -->
+    <section id="auth-section" class="card">
+      <div class="tabs">
+        <button type="button" class="tab active" data-tab="login">Вход</button>
+        <button type="button" class="tab" data-tab="register">Регистрация</button>
+      </div>
+
+      <form id="login-form" class="tab-content active" autocomplete="on">
+        <label>Username
+          <input name="username" required>
+        </label>
+        <label>Пароль
+          <input name="password" type="password" required>
+        </label>
+        <button type="submit" class="btn-primary">Войти</button>
+      </form>
+
+      <form id="register-form" class="tab-content" autocomplete="on">
+        <label>ФИО
+          <input name="full_name" required placeholder="Иванов Иван Иванович">
+        </label>
+        <label>Пароль
+          <input name="password" type="password" required minlength="4">
+        </label>
+        <label>Invite code <span class="hint">(оставьте пустым — зарегистрируетесь как ученик)</span>
+          <input name="invite_code" placeholder="для teacher/admin">
+        </label>
+        <label>Класс <span class="hint">(для ученика)</span>
+          <input name="class" placeholder="5А">
+        </label>
+        <label>Предмет <span class="hint">(для учителя)</span>
+          <input name="subject" placeholder="Математика">
+        </label>
+        <button type="submit" class="btn-primary">Зарегистрироваться</button>
+      </form>
+    </section>
+
+    <!-- =========== STUDENT =========== -->
+    <section id="student-section" class="card" hidden>
+      <h2>Загрузить домашнее задание</h2>
+      <form id="upload-form" enctype="multipart/form-data">
+        <label>Файл
+          <input name="file" type="file" required>
+        </label>
+        <label>Предмет
+          <input name="subject" placeholder="Математика">
+        </label>
+        <label>Описание
+          <input name="description" placeholder="№45 стр. 12">
+        </label>
+        <button type="submit" class="btn-primary">Загрузить</button>
+      </form>
+
+      <h2>Мои ДЗ</h2>
+      <ul id="student-homeworks" class="homework-list"></ul>
+    </section>
+
+    <!-- =========== TEACHER =========== -->
+    <section id="teacher-section" class="card" hidden>
+      <h2>Все ДЗ студентов</h2>
+      <ul id="teacher-homeworks" class="homework-list"></ul>
+    </section>
+
+    <!-- =========== ADMIN =========== -->
+    <section id="admin-section" class="card" hidden>
+      <h2>Панель администратора</h2>
+      <p>Управление расписанием появится позже.</p>
+    </section>
+
+    <div id="toast" class="toast" hidden></div>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
