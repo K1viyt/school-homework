@@ -10,7 +10,7 @@ import (
 var DB *sql.DB
 
 func Init() {
-	db, err := sql.Open("sqlite3", "homework.db")
+	db, err := sql.Open("sqlite3", "homework.db?_foreign_keys=on")
 	if err != nil {
 		log.Fatal("Ошибка соеденения с BD: ", err)
 	}
@@ -22,6 +22,7 @@ func Init() {
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS homework(
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	student_id INTEGER,
 	filename TEXT NOT NULL,
 	filepath TEXT NOT NULL,
 	subject TEXT,
@@ -35,6 +36,8 @@ func Init() {
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS users(
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	full_name TEXT NOT NULL,
+	subject TEXT,
+	class TEXT,
 	username TEXT NOT NULL UNIQUE,
 	password TEXT NOT NULL,
 	role TEXT NOT NULL,
@@ -46,6 +49,23 @@ func Init() {
     user_id INTEGER NOT NULL,
     token TEXT NOT NULL UNIQUE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`)
+	if err != nil {
+		log.Fatal("Невозможно созадть BD под sessions: ", err)
+	}
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS schedule(
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_name  TEXT    NOT NULL,
+    week_parity TEXT    NOT NULL CHECK(week_parity IN ('odd','even')),
+    day_of_week INTEGER NOT NULL CHECK(day_of_week BETWEEN 1 AND 6),  -- Пн..Сб
+    lesson_num  INTEGER NOT NULL CHECK(lesson_num BETWEEN 1 AND 10),
+    subject     TEXT    NOT NULL,
+    teacher_id  INTEGER NOT NULL,
+    room        TEXT,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (teacher_id) REFERENCES users(id),
+    UNIQUE(class_name, week_parity, day_of_week, lesson_num)
+);
+`)
 	if err != nil {
 		log.Fatal("Невозможно созадть BD под sessions: ", err)
 	}

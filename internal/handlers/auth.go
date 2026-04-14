@@ -1,0 +1,189 @@
+package handlers
+
+import (
+	crand "crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"math/rand"
+	"net/http"
+	"os"
+	"strings"
+
+	"github.com/K1viyt/school-homework/internal/database"
+	"golang.org/x/crypto/bcrypt"
+)
+
+func genarateUsername(fullName string) string {
+	// берём первое слово из полного имени (имя)
+	parts := strings.Fields(fullName)
+	base := strings.ToLower(parts[0])
+	// добавляем 4 случайных цифры
+	suffix := fmt.Sprintf("%04d", rand.Intn(10000))
+	return base + "_" + suffix
+
+}
+
+// Данный токен выдается user при успешной авторизации
+func genaratToken() (string, error) {
+	bytes := make([]byte, 32)
+	_, err := crand.Read(bytes)
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+func RegistrHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Разрешон только POST", http.StatusMethodNotAllowed)
+		return
+	}
+	var role string
+	var className string
+	var subjectName string
+	//Достаем нужные значения из БД
+	password := r.FormValue("password")
+	fullName := r.FormValue("full_name")
+	if fullName == "" {
+		http.Error(w, "Полное имя обязательное поле для заполнения", http.StatusBadRequest)
+		return
+	}
+	login := genarateUsername(fullName)
+	//Защита для роли учителя
+	teacherCode := os.Getenv("TEACHER_INVITE_CODE")
+	adminCode := os.Getenv("ADMIN_INVITE_CODE")
+	inviteCode := r.FormValue("invite_code")
+
+	switch {
+	case adminCode != "" && inviteCode == adminCode:
+		role = "admin"
+	case teacherCode != "" && inviteCode == teacherCode:
+		role = "teacher"
+	default:
+		role = "student"
+	}
+
+	if role == "student" {
+		className = r.FormValue("class")
+		if className == "" {
+			http.Error(w, "Класс обязателен для ученика", http.StatusBadRequest)
+			return
+		}
+	}
+	if role == "teacher" {
+		subjectName = r.FormValue("subject")
+		if subjectName == "" {
+			http.Error(w, "Класс обязателен для учителя", http.StatusBadRequest)
+			return
+		}
+	}
+	//Пишем пароль в hash
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, "Ошибка записи pasword в hash", http.StatusBadRequest)
+		return
+	}
+	//Записываем данные в БД
+	_, err = database.DB.Exec(`INSERT INTO users(full_name,role,password,username,class,subject) VALUES(?,?,?,?,?,?)`, fullName, role, hash, login, className, subjectName)
+	if err != nil {
+		http.Error(w, "Ошибка загрузки данных пользователя в базу", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message":  "Регистрация успешна",
+		"username": login,
+	})
+
+}
+func LoginHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Разрешон только Post", http.StatusMethodNotAllowed)
+		return
+	}
+
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+
+	var storedHash string
+	var role string
+	var userID int
+	err := database.DB.QueryRow(
+		`SELECT password, role,id FROM users WHERE username=?`, username,
+	).Scan(&storedHash, &role, &userID)
+	if err != nil {
+		http.Error(w, "Пользователь не найден", http.StatusNotFound)
+		return
+	}
+	err = bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password))
+	if err != nil {
+		http.Error(w, "Неверный пароль", http.StatusUnauthorized)
+		return
+	}
+	token, err := genaratToken()
+	if err != nil {
+		http.Error(w, "Ошибка генерации token", http.StatusInternalServerError)
+		return
+	}
+	_, err = database.DB.Exec(`INSERT INTO sessions(user_id,token) VALUES(?,?)`, userID, token)
+	if err != nil {
+		http.Error(w, "Ошибка передачи данных сессии пользователя", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message":  "Вы успешно авторизованны",
+		"username": username,
+		"role":     role,
+		"token":    token,
+	})
+}
+func getUserFromToken(r *http.Request) (*User, error) {
+	var user User
+	// 1. Достать заголовок Authorization
+	authHeader := r.Header.Get("Authorization")
+
+	// 2. Убрать префикс "Bearer "
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	if token == "" {
+		return nil, fmt.Errorf("токен отсутствует")
+	}
+
+	err := database.DB.QueryRow(`SELECT users.id,users.username,users.role FROM sessions JOIN users ON sessions.user_id = users.id WHERE sessions.token = ? AND sessions.created_at>datetime('now','-24 hours')`, token).Scan(&user.ID, &user.Username, &user.Role)
+	if err != nil {
+
+		return nil, fmt.Errorf("сессия не найдена или истекла")
+	}
+	return &user, nil
+
+}
+
+func LogoutHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Разрешон только Post", http.StatusMethodNotAllowed)
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	if token == "" {
+		http.Error(w, "токен отсутствует", http.StatusBadRequest)
+		return
+	}
+	result, err := database.DB.Exec(`DELETE FROM sessions WHERE token = ?`, token)
+	if err != nil {
+		http.Error(w, "Ошибка при выходе", http.StatusInternalServerError)
+		return
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		http.Error(w, "Сессия не найдена", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Успешное завершение сеанса",
+	})
+
+}
