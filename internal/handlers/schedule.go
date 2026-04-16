@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/K1viyt/school-homework/internal/database"
 )
@@ -17,6 +19,41 @@ type Schedule struct {
 	TeacherID  int     `json:"teacher_id"`
 	Room       *string `json:"room"` // может быть NULL
 	CreatedAt  string  `json:"created_at"`
+}
+
+type ScheduleInput struct {
+	ClassName  string  `json:"class_name"`
+	WeekParity string  `json:"week_parity"` // "odd" | "even"
+	DayOfWeek  int     `json:"day_of_week"` // 1..6 (Пн..Сб)
+	LessonNum  int     `json:"lesson_num"`  // 1..10
+	Subject    string  `json:"subject"`
+	TeacherID  int     `json:"teacher_id"`
+	Room       *string `json:"room"` // может быть NULL
+}
+
+func validateScheduleInput(in ScheduleInput) error {
+	if in.WeekParity != "odd" && in.WeekParity != "even" {
+		return fmt.Errorf("week_parity должен быть 'odd' или 'even'")
+	}
+	if in.DayOfWeek < 1 || in.DayOfWeek > 6 {
+		return fmt.Errorf("В неделе может быть только 1...6 дней")
+	}
+	if in.LessonNum < 1 || in.LessonNum > 10 {
+		return fmt.Errorf("Номер урока может быть от 1...10")
+	}
+	if in.Room != nil && *in.Room == "" {
+		return fmt.Errorf("Вы ввели пустой кабинет")
+	}
+	if in.Subject == "" {
+		return fmt.Errorf("Вы ввели недопустимое значение для название предмета это обязательное поле и оно не может быть пустым")
+	}
+	if in.TeacherID <= 0 {
+		return fmt.Errorf("ID учителя дожет быть 1.....")
+	}
+	if in.ClassName == "" {
+		return fmt.Errorf("Класс должен быть указан")
+	}
+	return nil
 }
 
 func GetScheduleHandler(w http.ResponseWriter, r *http.Request) {
@@ -68,4 +105,133 @@ func GetScheduleHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(schedule)
+}
+
+func CreateScheduleHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := getUserFromToken(r)
+	if err != nil {
+		http.Error(w, "Пользователь по токену не обнаружен", http.StatusUnauthorized)
+		return
+	}
+	if user.Role != "admin" {
+		http.Error(w, "Доступ разрешон пользователю с правами администратора", http.StatusForbidden)
+		return
+	}
+	var input ScheduleInput
+	err = json.NewDecoder(r.Body).Decode(&input)
+	if err != nil {
+		http.Error(w, "Был передан невалидный JSON", http.StatusBadRequest)
+		return
+	}
+	err = validateScheduleInput(input)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	result, err := database.DB.Exec(`INSERT INTO schedule(class_name, week_parity, day_of_week, lesson_num, subject, teacher_id, room)
+     VALUES(?, ?, ?, ?, ?, ?, ?)`, input.ClassName, input.WeekParity, input.DayOfWeek, input.LessonNum, input.Subject, input.TeacherID, input.Room)
+	if err != nil {
+		http.Error(w, "Соеденение с БД потеряно", http.StatusInternalServerError)
+		return
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		http.Error(w, "Ошибка возврата записанного id из базы schedule", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]any{
+		"id":      id,
+		"message": "расписание создано",
+	})
+}
+
+func UpdateScheduleHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := getUserFromToken(r)
+	if err != nil {
+		http.Error(w, "Пользователь по токену не обнаружен", http.StatusUnauthorized)
+		return
+	}
+	var input ScheduleInput
+	json.NewDecoder(r.Body).Decode(&input)
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Неудалось извлечь id", http.StatusNotFound)
+		return
+	}
+	role := user.Role
+
+	switch role {
+	case "admin":
+		result, err := database.DB.Exec(`UPDATE schedule SET class_name=?, week_parity=?, day_of_week=?, lesson_num=?, subject=?, teacher_id=?, room=? WHERE id=?`, input.ClassName, input.WeekParity, input.DayOfWeek, input.LessonNum, input.Subject, input.TeacherID, input.Room, id)
+		if err != nil {
+			http.Error(w, "Соеденение с БД потеряно", http.StatusInternalServerError)
+			return
+		}
+		rows, _ := result.RowsAffected()
+		if rows == 0 {
+			http.Error(w, "Запись не найдена", http.StatusNotFound)
+			return
+		}
+	case "teacher":
+		result, err := database.DB.Exec(`UPDATE schedule SET room=? WHERE teacher_id=? AND id=?
+    `, input.Room, user.ID, id)
+		if err != nil {
+			http.Error(w, "Соеденение с БД потеряно", http.StatusInternalServerError)
+			return
+		}
+		rows, _ := result.RowsAffected()
+		if rows == 0 {
+			http.Error(w, "Запись не найдена", http.StatusNotFound)
+			return
+		}
+	default:
+		http.Error(w, "Доступ к изменения в расписании вам запрещен", http.StatusForbidden)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"id":      id,
+		"message": "расписание обновлено",
+	})
+}
+
+func DeleteScheduleHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := getUserFromToken(r)
+	if err != nil {
+		http.Error(w, "Пользователь не найден", http.StatusNotFound)
+		return
+	}
+	role := user.Role
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Неудалось извлечь id", http.StatusNotFound)
+		return
+	}
+
+	if role == "admin" {
+		result, err := database.DB.Exec(`DELETE FROM schedule WHERE id=?`, id)
+		if err != nil {
+			http.Error(w, "Потеряно соеденение с БД на этапе DELETE", http.StatusInternalServerError)
+			return
+		}
+		rows, _ := result.RowsAffected()
+		if rows == 0 {
+			http.Error(w, "id По заданному URL не найден", http.StatusNotFound)
+			return
+		}
+	} else {
+		http.Error(w, "Вам недоступна эта функция,за корректировками обратитесь к админу", http.StatusForbidden)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{"message": "запись удалена", "id": id})
+
 }

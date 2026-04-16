@@ -42,8 +42,10 @@ func main() {
 	http.HandleFunc("/login", handlers.LoginHandler)
 	http.HandleFunc("/logout", handlers.LogoutHandler)
 	http.HandleFunc("/profile", handlers.ProfileHandler)
-	http.HandleFunc("/schedule", handlers.GetScheduleHandler)
-
+	http.HandleFunc("GET /schedule", handlers.GetScheduleHandler)
+	http.HandleFunc("POST /schedule", handlers.CreateScheduleHandler)
+	http.HandleFunc("PATCH /schedule/update/{id}", handlers.UpdateScheduleHandler)
+	http.HandleFunc("DELETE /schedule/delete/{id}", handlers.DeleteScheduleHandler)
 	log.Println("Сервер запущен на http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
