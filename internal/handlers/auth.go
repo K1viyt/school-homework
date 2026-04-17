@@ -85,7 +85,7 @@ func RegistrHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	//Записываем данные в БД
-	_, err = database.DB.Exec(`INSERT INTO users(full_name,role,password,username,class,subject) VALUES(?,?,?,?,?,?)`, fullName, role, hash, login, className, subjectName)
+	_, err = database.DB.Exec(`INSERT INTO users(full_name,role,password,username,class,subject) VALUES($1,$2,$3,$4,$5,$6)`, fullName, role, hash, login, className, subjectName)
 	if err != nil {
 		http.Error(w, "Ошибка загрузки данных пользователя в базу", http.StatusBadRequest)
 		return
@@ -110,7 +110,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	var role string
 	var userID int
 	err := database.DB.QueryRow(
-		`SELECT password, role,id FROM users WHERE username=?`, username,
+		`SELECT password, role,id FROM users WHERE username=$1`, username,
 	).Scan(&storedHash, &role, &userID)
 	if err != nil {
 		http.Error(w, "Пользователь не найден", http.StatusNotFound)
@@ -126,7 +126,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Ошибка генерации token", http.StatusInternalServerError)
 		return
 	}
-	_, err = database.DB.Exec(`INSERT INTO sessions(user_id,token) VALUES(?,?)`, userID, token)
+	_, err = database.DB.Exec(`INSERT INTO sessions(user_id,token) VALUES($1,$2)`, userID, token)
 	if err != nil {
 		http.Error(w, "Ошибка передачи данных сессии пользователя", http.StatusInternalServerError)
 		return
@@ -150,7 +150,7 @@ func getUserFromToken(r *http.Request) (*User, error) {
 		return nil, fmt.Errorf("токен отсутствует")
 	}
 
-	err := database.DB.QueryRow(`SELECT users.id,users.username,users.role FROM sessions JOIN users ON sessions.user_id = users.id WHERE sessions.token = ? AND sessions.created_at>datetime('now','-24 hours')`, token).Scan(&user.ID, &user.Username, &user.Role)
+	err := database.DB.QueryRow(`SELECT users.id,users.username,users.role FROM sessions JOIN users ON sessions.user_id = users.id WHERE sessions.token = $1 AND sessions.created_at > NOW() - INTERVAL '24 hours'`, token).Scan(&user.ID, &user.Username, &user.Role)
 	if err != nil {
 
 		return nil, fmt.Errorf("сессия не найдена или истекла")
@@ -171,7 +171,7 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "токен отсутствует", http.StatusBadRequest)
 		return
 	}
-	result, err := database.DB.Exec(`DELETE FROM sessions WHERE token = ?`, token)
+	result, err := database.DB.Exec(`DELETE FROM sessions WHERE token = $1`, token)
 	if err != nil {
 		http.Error(w, "Ошибка при выходе", http.StatusInternalServerError)
 		return

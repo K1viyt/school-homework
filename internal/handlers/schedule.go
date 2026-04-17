@@ -80,7 +80,7 @@ func GetScheduleHandler(w http.ResponseWriter, r *http.Request) {
 	rows, err := database.DB.Query(`
 		SELECT id, class_name, week_parity, day_of_week, lesson_num, subject, teacher_id, room
 		FROM schedule
-		WHERE class_name = ? AND week_parity = ?
+		WHERE class_name = $1 AND week_parity = $2
 		ORDER BY day_of_week, lesson_num
 	`, className, week)
 	if err != nil {
@@ -128,16 +128,12 @@ func CreateScheduleHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	var id int64
 
-	result, err := database.DB.Exec(`INSERT INTO schedule(class_name, week_parity, day_of_week, lesson_num, subject, teacher_id, room)
-     VALUES(?, ?, ?, ?, ?, ?, ?)`, input.ClassName, input.WeekParity, input.DayOfWeek, input.LessonNum, input.Subject, input.TeacherID, input.Room)
+	err = database.DB.QueryRow(`INSERT INTO schedule(class_name, week_parity, day_of_week, lesson_num, subject, teacher_id, room)
+     VALUES($1, $2, $3, $4, $5, $6, $7) RETURNING id`, input.ClassName, input.WeekParity, input.DayOfWeek, input.LessonNum, input.Subject, input.TeacherID, input.Room).Scan(&id)
 	if err != nil {
-		http.Error(w, "Соеденение с БД потеряно", http.StatusInternalServerError)
-		return
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		http.Error(w, "Ошибка возврата записанного id из базы schedule", http.StatusBadRequest)
+		http.Error(w, "Ошибка записи", http.StatusInternalServerError)
 		return
 	}
 
@@ -167,7 +163,7 @@ func UpdateScheduleHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch role {
 	case "admin":
-		result, err := database.DB.Exec(`UPDATE schedule SET class_name=?, week_parity=?, day_of_week=?, lesson_num=?, subject=?, teacher_id=?, room=? WHERE id=?`, input.ClassName, input.WeekParity, input.DayOfWeek, input.LessonNum, input.Subject, input.TeacherID, input.Room, id)
+		result, err := database.DB.Exec(`UPDATE schedule SET class_name=$1, week_parity=$2, day_of_week=$3, lesson_num=$4, subject=$5, teacher_id=$6, room=$7 WHERE id=$8`, input.ClassName, input.WeekParity, input.DayOfWeek, input.LessonNum, input.Subject, input.TeacherID, input.Room, id)
 		if err != nil {
 			http.Error(w, "Соеденение с БД потеряно", http.StatusInternalServerError)
 			return
@@ -178,7 +174,7 @@ func UpdateScheduleHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case "teacher":
-		result, err := database.DB.Exec(`UPDATE schedule SET room=? WHERE teacher_id=? AND id=?
+		result, err := database.DB.Exec(`UPDATE schedule SET room=$1 WHERE teacher_id=$2 AND id=$3
     `, input.Room, user.ID, id)
 		if err != nil {
 			http.Error(w, "Соеденение с БД потеряно", http.StatusInternalServerError)
@@ -216,7 +212,7 @@ func DeleteScheduleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if role == "admin" {
-		result, err := database.DB.Exec(`DELETE FROM schedule WHERE id=?`, id)
+		result, err := database.DB.Exec(`DELETE FROM schedule WHERE id=$1`, id)
 		if err != nil {
 			http.Error(w, "Потеряно соеденение с БД на этапе DELETE", http.StatusInternalServerError)
 			return

@@ -3,14 +3,15 @@ package database
 import (
 	"database/sql"
 	"log"
+	"os"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 var DB *sql.DB
 
 func Init() {
-	db, err := sql.Open("sqlite3", "homework.db?_foreign_keys=on")
+	db, err := sql.Open("pgx", os.Getenv("DATABASE_URL"))
 	if err != nil {
 		log.Fatal("Ошибка соеденения с BD: ", err)
 	}
@@ -21,39 +22,39 @@ func Init() {
 	}
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS homework(
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	student_id INTEGER,
+	id BIGSERIAL PRIMARY KEY,
+	teacher_id INTEGER,
 	filename TEXT NOT NULL,
 	filepath TEXT NOT NULL,
 	subject TEXT,
 	description TEXT,
-    uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP)`)
+    uploaded_at TIMESTAMPTZ DEFAULT NOW())`)
 
 	if err != nil {
 		log.Fatal("Невозможно создать BD: ", err)
 	}
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS users(
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	id BIGSERIAL PRIMARY KEY,
 	full_name TEXT NOT NULL,
 	subject TEXT,
 	class TEXT,
 	username TEXT NOT NULL UNIQUE,
 	password TEXT NOT NULL,
 	role TEXT NOT NULL,
-	created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`)
+	created_at TIMESTAMPTZ DEFAULT NOW())`)
 	if err != nil {
 		log.Fatal("Невозможно созадть BD под users: ", err)
 	}
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS sessions(id INTEGER PRIMARY KEY AUTOINCREMENT,
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS sessions(id BIGSERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     token TEXT NOT NULL UNIQUE,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`)
+    created_at TIMESTAMPTZ DEFAULT NOW())`)
 	if err != nil {
 		log.Fatal("Невозможно созадть BD под sessions: ", err)
 	}
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS schedule(
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    id          BIGSERIAL PRIMARY KEY,
     class_name  TEXT    NOT NULL,
     week_parity TEXT    NOT NULL CHECK(week_parity IN ('odd','even')),
     day_of_week INTEGER NOT NULL CHECK(day_of_week BETWEEN 1 AND 6),  -- Пн..Сб
@@ -61,7 +62,7 @@ func Init() {
     subject     TEXT    NOT NULL,
     teacher_id  INTEGER NOT NULL,
     room        TEXT,
-    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
     FOREIGN KEY (teacher_id) REFERENCES users(id),
     UNIQUE(class_name, week_parity, day_of_week, lesson_num)
 );

@@ -43,7 +43,7 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Проверка роли (только для хэндлеров учителя)
-	if user.Role != "student" {
+	if user.Role != "teacher" {
 		http.Error(w, "Доступ запрещён", http.StatusForbidden)
 		return
 	}
@@ -87,7 +87,7 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		descriptionVal = nil
 	}
-	_, err = database.DB.Exec(`INSERT INTO homework(filename, filepath, subject, description, student_id) VALUES(?, ?, ?, ?, ?)`,
+	_, err = database.DB.Exec(`INSERT INTO homework(filename, filepath, subject, description, teacher_id) VALUES($1, $2, $3, $4, $5)`,
 		h.Filename, filepath.Join("uploads", filepath.Base(h.Filename)), subjectVal, descriptionVal, user.ID)
 	if err != nil {
 		http.Error(w, "Ошибка записи в базу данных", http.StatusInternalServerError)
@@ -105,7 +105,7 @@ func ListHomeworksHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Проверка авторизации
-	user, err := getUserFromToken(r)
+	_, err := getUserFromToken(r)
 	if err != nil {
 		http.Error(w, "Не авторизован", http.StatusUnauthorized)
 		return
@@ -114,12 +114,8 @@ func ListHomeworksHandler(w http.ResponseWriter, r *http.Request) {
 	var query string
 	var queryArgs []any
 
-	if user.Role == "teacher" {
 		query = `SELECT id, filename, filepath, subject, description FROM homework`
-	} else {
-		query = `SELECT id, filename, filepath, subject, description FROM homework WHERE student_id = ?`
-		queryArgs = []any{user.ID}
-	}
+	
 
 	rows, err := database.DB.Query(query, queryArgs...)
 	// 3. Проходим по результатам и собираем их в слайс структур
@@ -160,7 +156,7 @@ func DeleteHomeworkHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Проверка роли (только для хэндлеров учителя)
-	if user.Role != "student" {
+	if user.Role != "teacher" {
 		http.Error(w, "Доступ запрещён", http.StatusForbidden)
 		return
 	}
@@ -173,13 +169,13 @@ func DeleteHomeworkHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	//Удаляем по ID,filepath
 	var fpath string
-	err = database.DB.QueryRow(`SELECT filepath FROM homework WHERE id=? AND student_id=?`, id, user.ID).Scan(&fpath)
+	err = database.DB.QueryRow(`SELECT filepath FROM homework WHERE id=$1 AND teacher_id=$2`, id, user.ID).Scan(&fpath)
 
 	if err != nil {
 		http.Error(w, "Задание не найдено", http.StatusNotFound)
 		return
 	}
-	_, err = database.DB.Exec(`DELETE FROM homework WHERE id=? AND student_id=?`, id, user.ID)
+	_, err = database.DB.Exec(`DELETE FROM homework WHERE id=$1 AND teacher_id=$2`, id, user.ID)
 	if err != nil {
 		http.Error(w, "Ошибка удаления из базы", http.StatusInternalServerError)
 		return
@@ -206,7 +202,7 @@ func UpdateHomeworkHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Проверка роли (только для хэндлеров учителя)
-	if user.Role != "student" {
+	if user.Role != "teacher" {
 		http.Error(w, "Доступ запрещён", http.StatusForbidden)
 		return
 	}
@@ -227,7 +223,7 @@ func UpdateHomeworkHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := database.DB.Exec(`UPDATE homework SET subject=?, description=? WHERE id=? AND student_id=?`,
+	result, err := database.DB.Exec(`UPDATE homework SET subject=$1, description=$2 WHERE id=$3 AND teacher_id=$4`,
 		input.Subject, input.Description, id, user.ID)
 	if err != nil {
 		http.Error(w, "Ошибка обновления в базе", http.StatusInternalServerError)
@@ -257,7 +253,7 @@ func ReplaceHomeworkHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Проверка роли (только для хэндлеров учителя)
-	if user.Role != "student" {
+	if user.Role != "teacher" {
 		http.Error(w, "Доступ запрещён", http.StatusForbidden)
 		return
 	}
@@ -269,7 +265,7 @@ func ReplaceHomeworkHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var fpath string
-	err = database.DB.QueryRow(`SELECT filepath FROM homework WHERE id=? AND student_id=?`, id, user.ID).Scan(&fpath)
+	err = database.DB.QueryRow(`SELECT filepath FROM homework WHERE id=$1 AND teacher_id=$2`, id, user.ID).Scan(&fpath)
 	if err != nil {
 		http.Error(w, "Такого id нету", http.StatusNotFound)
 		return
@@ -314,7 +310,7 @@ func ReplaceHomeworkHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		descriptionVal = nil
 	}
-	_, err = database.DB.Exec(`UPDATE homework SET filename=?,filepath=?,subject=?,description=? WHERE id=? AND student_id=?`, h.Filename, filepath.Join("uploads", filepath.Base(h.Filename)), subjectVal, descriptionVal, id, user.ID)
+	_, err = database.DB.Exec(`UPDATE homework SET filename=$1,filepath=$2,subject=$3,description=$4 WHERE id=$5 AND teacher_id=$6`, h.Filename, filepath.Join("uploads", filepath.Base(h.Filename)), subjectVal, descriptionVal, id, user.ID)
 	if err != nil {
 		http.Error(w, "Ошибка перезаписи файла в базу", http.StatusInternalServerError)
 		return

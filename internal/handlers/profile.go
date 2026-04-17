@@ -20,7 +20,7 @@ func ProfileHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Пользователь по данному токену не найдет", http.StatusUnauthorized)
 		return
 	}
-	row := database.DB.QueryRow(`SELECT full_name, username, role, class, subject FROM users WHERE id=?`, user.ID)
+	row := database.DB.QueryRow(`SELECT full_name, username, role, class, subject FROM users WHERE id=$1`, user.ID)
 	err = row.Scan(&fullName, &username, &role, &class, &subject)
 	if err != nil {
 		http.Error(w, "Профиль ненайдет", http.StatusNotFound)
